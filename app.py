@@ -423,4 +423,4 @@ class H(BaseHTTPRequestHandler):
             DUP_CACHE[_h] = (time.time(), resp)
             self._json(200, resp)
 
-ThreadingHTTPServer(("127.0.0.1", 3001), H).serve_forever()
+ThreadingHTTPServer(("127.0.0.1", 3012), H).serve_forever()
