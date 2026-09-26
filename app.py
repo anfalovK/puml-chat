@@ -147,6 +147,23 @@ def _log_req(ip, user_id, model, ok):
     conn.close()
 
 
+# 26.09 #146 stage 2: телеметрия /api/adjust по нотациям (движок из чата).
+# JSONL fail-open: телеметрия никогда не ломает основной ответ.
+_TELEMETRY_DIR = Path(__file__).parent / "telemetry"
+_TELEMETRY_FILE = _TELEMETRY_DIR / "adjust.jsonl"
+
+
+def _tel_log(event, **fields):
+    try:
+        _TELEMETRY_DIR.mkdir(exist_ok=True)
+        rec = {"ts": int(time.time()), "event": event}
+        rec.update(fields)
+        with open(_TELEMETRY_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        logging.debug("telemetry write failed", exc_info=True)
+
+
 # -- Auth --------------------------------------------------------------------
 def _resolve_user(auth_header, cookie_header, ip):
     """Returns (user_id, plan_code, daily_limit)."""
@@ -694,6 +711,7 @@ class H(BaseHTTPRequestHandler):
         except Exception as exc:
             USAGE_ACTIONS.fail(action_id, "pumla_upstream_failed")
             _log_req(ip, uid, model, False)
+            _tel_log("adjust_fail", engine=engine, user_id=str(uid)[:64], error=str(exc)[:120])
             logging.exception("Pumla LLM action failed action_id=%s", action_id or "none")
             return self._json(502, {
                 "error": "llm_upstream_failed",
@@ -729,6 +747,10 @@ class H(BaseHTTPRequestHandler):
                 action_id or "none", model, complexity["class"], json.dumps(usage),
             )
             resp = {"code": None, "text": answer.strip(), **base_resp}
+
+        _tel_log("adjust_ok", engine=engine, user_id=str(uid)[:64], model=model,
+                 has_code=bool(new_code), action_type=action_type,
+                 complexity=complexity["class"])
 
         DUP_CACHE[request_hash] = (time.time(), resp)
         return self._json(200, resp)
